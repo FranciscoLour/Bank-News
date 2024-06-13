@@ -1,0 +1,6 @@
+feedparser
+beautifulsoup4
+dateparser
+requests
+pandas
+numpy
