@@ -147,22 +147,29 @@ class GoogleNews:
         d['entries'] = self.__add_sub_articles(d['entries'])
         return d
 
-def get_news(instituicoes):
+
+import streamlit as st
+import pandas as pd
+from datetime import datetime, date, timedelta
+
+# Function to get news from Google News
+def get_news(instituicoes, start_date, end_date):
     gn = GoogleNews(lang="pt", country="PT")
     article_data = []
     for instituicao in instituicoes:
         search_results = gn.search(str(instituicao))
         sorted_articles = sorted(search_results['entries'], key=lambda x: x['published'], reverse=True)
         for entry in sorted_articles:
-            article_data.append({
-                "Nome Instituiçao": instituicao,
-                "Title": entry['title'],
-                "Link": entry['link'],
-                "Publication Date": entry['published'],
-                "Source": entry["source"]["title"]
-            })
+            publication_date = pd.to_datetime(entry['published'], infer_datetime_format=True).date()
+            if start_date <= publication_date <= end_date:
+                article_data.append({
+                    "Nome Instituiçao": instituicao,
+                    "Title": entry['title'],
+                    "Link": entry['link'],
+                    "Publication Date": publication_date,
+                    "Source": entry["source"]["title"]
+                })
     df = pd.DataFrame(article_data)
-    df["Publication Date"] = pd.to_datetime(df["Publication Date"], infer_datetime_format=True).dt.date
     sorted_df = df.sort_values(by="Publication Date", ascending=False)
     sorted_df.reset_index(inplace=True, drop=True)
     aux = list((sorted_df["Source"].value_counts().index[sorted_df["Source"].value_counts() < 5].tolist()))
@@ -170,26 +177,38 @@ def get_news(instituicoes):
     return filtered_df
 
 # Streamlit App
+st.sidebar.title("Institution Selection")
+institutions = [
+    "CGD", "Banco Santander Totta", "Novo Banco", "BCP", "BPI", 
+    "BAI Europa", "Banco Atlantico Europa", "BNI Europa", 
+    "Banco Montepio", "Banco Carregosa", "Banco Invest", "Banco CTT", "CCAM"
+]
+selected_institutions = st.sidebar.multiselect("Select Institutions", institutions, default=["CGD","BCP", "Novo Banco", "Banco Santander Totta", "Banco Montepio"])
+
+# Sidebar for date selection
+# Sidebar for date selection
+st.sidebar.title("Date Selection")
+today = date.today()
+start_date_default = today - timedelta(days=14)
+start_date = st.sidebar.date_input("Start Date", value=start_date_default)
+end_date = st.sidebar.date_input("End Date", value=today)
+
+# Preload news results on app load
+news_df = get_news(selected_institutions, start_date, end_date)
+
+# Main content
 st.title("Google News Dashboard")
 
-instituicoes = ["CGD", "Banco Santander Totta", "Novo Banco", "BCP", "BPI", 
-                "BAI Europa", "Banco Atlantico Europa", "BNI Europa", 
-                "Banco Montepio", "Banco Carregosa", "Banco Invest", "Banco CTT", "CCAM"]
+if st.sidebar.button("Fetch News"):
+    with st.spinner('Retrieving latest news...'):
+        news_df = get_news(selected_institutions, start_date, end_date)
+        st.success('News retrieved successfully!')
 
-selected_instituicoes = st.multiselect("Select Institutions", instituicoes, default=instituicoes)
-
-if st.button("Get News"):
-    with st.spinner('Fetching news...'):
-        news_df = get_news(selected_instituicoes)
-        st.success('News fetched successfully!')
-
-        st.write(news_df)
-
-        st.write("### News Articles")
-        for i, row in news_df.iterrows():
-            st.markdown(f"#### {row['Title']}")
-            st.markdown(f"**Source:** {row['Source']}")
-            st.markdown(f"**Publication Date:** {row['Publication Date']}")
-            st.markdown(f"[Read more]({row['Link']})")
-            st.markdown("---")
-
+st.write("### News Articles")
+for _, row in news_df.iterrows():
+    st.markdown(f"#### {row['Title']}")
+    st.markdown(f"**Institution:** {row['Nome Instituiçao']}")
+    st.markdown(f"**Source:** {row['Source']}")
+    st.markdown(f"**Publication Date:** {row['Publication Date'].strftime('%Y-%m-%d')}")
+    st.markdown(f"[Read more]({row['Link']})")
+    st.markdown("---")
